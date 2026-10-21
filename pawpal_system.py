@@ -38,6 +38,22 @@ def _new_id() -> str:
     return uuid.uuid4().hex
 
 
+# CHANGE: helpers for the scheduler's time arithmetic. datetime.time objects
+# can't be added to, so the scheduler works in "minutes since midnight" (plain
+# integers) and converts to and from time objects at the edges.
+_MINUTES_PER_DAY = 24 * 60  # 1440; a task may not run past the end of the day
+
+
+def _to_minutes(t: time) -> int:
+    # 08:30 -> 510
+    return t.hour * 60 + t.minute
+
+
+def _to_time(minutes: int) -> time:
+    # 510 -> 08:30. Callers keep `minutes` below _MINUTES_PER_DAY.
+    return time(minutes // 60, minutes % 60)
+
+
 @dataclass
 class Task:
     title: str
@@ -216,16 +232,70 @@ class Schedule:
     skipped: list[Task] = field(default_factory=list)
 
     def total_minutes(self) -> int:
-        pass
+        # Add up the duration of every scheduled task: the time this plan
+        # actually uses, to compare against available_minutes.
+        return sum(item.task.duration_minutes for item in self.scheduled)
 
     def has_conflict(self) -> bool:
         # CHANGE (behavior note): now meaningful because Task.preferred_time
         # can pin tasks to overlapping slots. Sort by start time, then compare
         # neighbours (O(n log n)) rather than every pair (O(n^2)).
-        pass
+
+        # Put the items in time order first, so any overlap must be between
+        # two items that sit next to each other.
+        ordered = sorted(self.scheduled, key=lambda item: item.start_time)
+        # zip(ordered, ordered[1:]) pairs each item with the one after it.
+        for earlier, later in zip(ordered, ordered[1:]):
+            # Overlap only if the later task starts BEFORE the earlier one
+            # ends. Starting exactly when it ends (8:30 / 8:30) is fine.
+            if later.start_time < earlier.end_time:
+                return True
+        # No neighbouring pair overlapped.
+        return False
 
     def explain(self) -> str:
-        pass
+        # Map pet_id -> pet name so each line can say which pet a task is
+        # for. Empty if the schedule isn't linked to an owner.
+        pet_names = {}
+        if self.owner is not None:
+            pet_names = {pet.pet_id: pet.name for pet in self.owner.pets}
+
+        # Header: the day and how much of the time budget the plan uses.
+        lines = [
+            f"Plan for {self.date.isoformat()} "
+            f"({self.total_minutes()} of {self.available_minutes} min used):"
+        ]
+
+        # One line per scheduled task, in time order.
+        for item in sorted(self.scheduled, key=lambda i: i.start_time):
+            task = item.task
+            # Pet name if we can find it, otherwise leave it out.
+            pet = pet_names.get(task.pet_id, "")
+            who = f" for {pet}" if pet else ""
+            # Tasks that asked for a specific time get a note saying so.
+            pinned = " (at its preferred time)" if task.preferred_time else ""
+            lines.append(
+                f"  {item.start_time:%H:%M}-{item.end_time:%H:%M} {task.title}{who} "
+                f"[{task.priority.name.lower()}, {task.duration_minutes} min]{pinned}"
+            )
+        # Say so explicitly instead of printing just a header.
+        if not self.scheduled:
+            lines.append("  Nothing scheduled.")
+
+        # Skipped section. `skipped` holds only the tasks, not a reason per
+        # task, so the reason given here is the general one.
+        if self.skipped:
+            remaining = self.available_minutes - self.total_minutes()
+            lines.append("Skipped:")
+            for task in self.skipped:
+                lines.append(
+                    f"  {task.title} [{task.priority.name.lower()}, "
+                    f"{task.duration_minutes} min] - did not fit "
+                    f"({remaining} min left, or its time slot was taken)"
+                )
+
+        # Join all the lines into one block of text.
+        return "\n".join(lines)
 
 
 @dataclass
@@ -277,9 +347,102 @@ class Scheduler:
         self, owner: Owner, on: date, start_time: time, available_minutes: int
     ) -> Schedule:
         # CHANGE (behavior note): only include tasks where task.is_due(on).
-        pass
+
+        # Step 1: start with an empty schedule for this day, linked to the
+        # owner so explain() can look up pet names.
+        schedule = Schedule(
+            date=on,
+            start_time=start_time,
+            available_minutes=available_minutes,
+            owner=owner,
+        )
+
+        # Step 2: gather every pet's tasks, keep only the ones due today,
+        # then order them from most to least important.
+        due = [task for task in owner.get_all_tasks() if task.is_due(on)]
+        ordered = self.sort_by_priority(due)
+
+        # Bookkeeping: time blocks already used, as (start, end) pairs in
+        # minutes since midnight, and the total task minutes placed so far.
+        taken: list[tuple[int, int]] = []
+        used = 0
+
+        def overlaps(start: int, end: int) -> bool:
+            # Two blocks overlap when each one starts before the other ends.
+            # Touching blocks (one ends exactly when the next starts) don't.
+            return any(start < t_end and t_start < end for t_start, t_end in taken)
+
+        def place(task: Task, start: int) -> None:
+            # Record the task at `start`: reserve its block, add its minutes
+            # to the budget used, and add it to the schedule as a
+            # ScheduledTask with real time-of-day values.
+            nonlocal used
+            end = start + task.duration_minutes
+            taken.append((start, end))
+            used += task.duration_minutes
+            schedule.scheduled.append(
+                ScheduledTask(task, _to_time(start), _to_time(end))
+            )
+
+        # Step 3: tasks pinned to a preferred time go first so flexible tasks
+        # are fitted around them. Everything else waits in `flexible`.
+        flexible: list[Task] = []
+        for task in ordered:
+            if task.preferred_time is None:
+                flexible.append(task)
+                continue
+            start = _to_minutes(task.preferred_time)
+            end = start + task.duration_minutes
+            # Keep the requested slot only if there is budget left, it ends
+            # before midnight, and nothing already placed overlaps it.
+            if (
+                used + task.duration_minutes <= available_minutes
+                and end <= _MINUTES_PER_DAY
+                and not overlaps(start, end)
+            ):
+                place(task, start)
+            else:
+                # The owner asked for that exact time, so we don't move it;
+                # it is reported as skipped instead.
+                schedule.skipped.append(task)
+
+        # Step 4: flexible tasks, highest priority first. Each takes the
+        # earliest free gap at or after the day's start time.
+        day_start = _to_minutes(start_time)
+        for task in flexible:
+            # Out of budget: skip without searching for a gap.
+            if used + task.duration_minutes > available_minutes:
+                schedule.skipped.append(task)
+                continue
+            # Try the day's start, and whenever the spot is blocked, jump to
+            # the end of the blocking task and try again.
+            start = day_start
+            while True:
+                end = start + task.duration_minutes
+                if end > _MINUTES_PER_DAY:
+                    # Ran off the end of the day without finding a gap.
+                    schedule.skipped.append(task)
+                    break
+                # End times of any placed tasks that overlap this spot.
+                blockers = [
+                    t_end for t_start, t_end in taken if start < t_end and t_start < end
+                ]
+                if not blockers:
+                    place(task, start)
+                    break
+                # Move past the latest blocker and check that spot next.
+                start = max(blockers)
+
+        # Step 5: tasks were placed in priority order, so put them back in
+        # time order before returning. The caller decides whether to save
+        # the schedule with owner.set_schedule().
+        schedule.scheduled.sort(key=lambda item: item.start_time)
+        return schedule
 
     def sort_by_priority(self, tasks: list[Task]) -> list[Task]:
         # CHANGE (behavior note): ties in priority break by shorter duration
         # first, so more tasks fit in the available time.
-        pass
+        # Highest priority first (negative value sorts descending); on a tie
+        # the shorter task comes first. sorted() returns a new list and
+        # leaves the caller's list unchanged.
+        return sorted(tasks, key=lambda t: (-t.priority_value(), t.duration_minutes))
