@@ -22,6 +22,16 @@ class Priority(Enum):
     LOW = 1
 
 
+# CHANGE: new enum for the state of one scheduled activity. A single
+# `completed` bool could only say "done / not done"; this also covers
+# "skipped by the owner today", which the scheduler's `skipped` list (tasks that
+# never fit) cannot express.
+class Status(Enum):
+    PENDING = "pending"  # on today's plan, not done yet (the starting state)
+    DONE = "done"  # the owner finished it
+    SKIPPED = "skipped"  # the owner chose not to do it today
+
+
 # CHANGE: helper so every Task/Pet gets a unique id. Titles and names are not
 # guaranteed unique, so lookups and links by title/name were ambiguous.
 def _new_id() -> str:
@@ -56,16 +66,42 @@ class Task:
 
     def mark_complete(self, on: date) -> None:
         # CHANGE: takes the date so last_completed can be recorded.
-        pass
+        # Remember the day this task was finished; is_due() reads this to
+        # decide when a recurring task should show up again.
+        self.last_completed = on
 
     def is_due(self, on: date) -> bool:
         # CHANGE: new method. Combines frequency, days_of_week and
         # last_completed so the scheduler can ask "should this task be on the
         # plan for this date?" in one place.
-        pass
+
+        # Step 1: weekday filter. If the task is pinned to certain weekdays
+        # (0 = Monday ... 6 = Sunday) and `on` isn't one of them, it's not due.
+        # An empty list means "no restriction", so we skip this check.
+        if self.days_of_week and on.weekday() not in self.days_of_week:
+            return False
+
+        # Step 2: never completed before, so it is due.
+        if self.last_completed is None:
+            return True
+
+        # Step 3: how many days have passed since it was last done?
+        days_since = (on - self.last_completed).days
+
+        # Step 4a: a weekly task with no fixed weekday repeats every 7 days
+        # from the last time it was done.
+        if self.frequency == "weekly" and not self.days_of_week:
+            return days_since >= 7
+
+        # Step 4b: everything else (daily, or weekly pinned to weekdays) is
+        # due again as long as it wasn't already done on `on` itself. Using
+        # `> 0` also keeps today's finished task off a regenerated plan.
+        return days_since > 0
 
     def priority_value(self) -> int:
-        pass
+        # The number behind the Priority enum (HIGH=3, MEDIUM=2, LOW=1), so
+        # the scheduler can sort tasks by a plain integer.
+        return self.priority.value
 
 
 @dataclass
@@ -96,9 +132,51 @@ class ScheduledTask:
     # error-prone on strings like "8:30" vs "08:30".
     start_time: time
     end_time: time
-    # CHANGE: completion for *this day* lives here, not on the shared Task,
-    # so checking off today's walk doesn't mark every future walk done.
-    completed: bool = False
+    # CHANGE: `completed: bool` -> `status: Status`. The state for *this day*
+    # still lives here, not on the shared Task, so checking off today's walk
+    # doesn't mark every future walk done. New items begin as PENDING.
+    status: Status = Status.PENDING
+
+    # CHANGE: read-only shortcuts that forward to the wrapped Task. The Task
+    # stays the single source of truth for what the activity is; these just
+    # save callers from writing `item.task.title` everywhere.
+    @property
+    def title(self) -> str:
+        # The activity's name, e.g. "Morning walk".
+        return self.task.title
+
+    @property
+    def duration_minutes(self) -> int:
+        # How long the activity takes, taken from the task (not from the
+        # start/end times, so the two can't drift apart).
+        return self.task.duration_minutes
+
+    @property
+    def frequency(self) -> str:
+        # "daily" or "weekly". Frequency belongs to the task, not to one
+        # day's placement, so we only forward it here.
+        return self.task.frequency
+
+    @property
+    def is_done(self) -> bool:
+        # Bool-style check so code that only cares "finished or not" stays
+        # simple; replaces reading the old `completed` flag.
+        return self.status is Status.DONE
+
+    def mark_done(self, on: date) -> None:
+        # CHANGE: one call finishes the activity everywhere it needs to.
+        # 1) Record that this scheduled instance is done.
+        self.status = Status.DONE
+        # 2) Tell the underlying Task the date, so Task.is_due() knows a
+        #    recurring task was just done and won't be due again until its
+        #    frequency says so. `on` is a parameter because ScheduledTask
+        #    doesn't know which day's Schedule it belongs to.
+        self.task.mark_complete(on)
+
+    def mark_skipped(self) -> None:
+        # The owner chose not to do this today. Only the status changes:
+        # the Task's last_completed is left alone, so it stays due later.
+        self.status = Status.SKIPPED
 
 
 @dataclass

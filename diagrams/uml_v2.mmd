@@ -6,6 +6,13 @@ classDiagram
         LOW
     }
 
+    class Status {
+        <<enumeration>>
+        PENDING
+        DONE
+        SKIPPED
+    }
+
     class Owner {
         +str first_name
         +str last_name
@@ -49,7 +56,13 @@ classDiagram
         +Task task
         +time start_time
         +time end_time
-        +bool completed
+        +Status status
+        +title() str
+        +duration_minutes() int
+        +frequency() str
+        +is_done() bool
+        +mark_done(on: date) None
+        +mark_skipped() None
     }
 
     class Schedule {
@@ -77,5 +90,6 @@ classDiagram
     Schedule "1" --> "*" ScheduledTask : contains
     Schedule --> Owner : belongs to
     ScheduledTask "1" --> "1" Task : wraps
+    ScheduledTask --> Status : has
     Scheduler ..> Owner : reads tasks from
     Scheduler ..> Schedule : creates
