@@ -348,6 +348,41 @@ class Owner:
         # Store the pet in the owner's list; an owner can have any number.
         self.pets.append(pet)
 
+    def edit_pet(
+        self, pet_id: str, name: str, species: str, age: int | None = None
+    ) -> None:
+        """Update a pet's name, species and (optionally) age, or raise ValueError."""
+        # Find the pet by id (names can repeat) and change its fields in
+        # place. The Pet object itself is kept, so its tasks and id stay put.
+        for pet in self.pets:
+            if pet.pet_id == pet_id:
+                pet.name = name
+                pet.species = species
+                # Only change the age if one was given; None means "keep it".
+                if age is not None:
+                    pet.age = age
+                return
+        # Nothing matched: fail loudly so a wrong id is noticed.
+        raise ValueError(f"No pet with id {pet_id!r} for owner {self.full_name()!r}")
+
+    def remove_pet(self, pet_id: str) -> None:
+        """Delete the pet with the given id (and its tasks), or raise ValueError."""
+        # The pet's tasks live inside the Pet, so they are removed with it.
+        # Past Schedules keep their own references, so history is not
+        # rewritten (same rule as Pet.remove_task).
+        for i, pet in enumerate(self.pets):
+            if pet.pet_id == pet_id:
+                del self.pets[i]
+                return
+        # Nothing matched: raise the same error as edit_pet.
+        raise ValueError(f"No pet with id {pet_id!r} for owner {self.full_name()!r}")
+
+    def edit_name(self, first_name: str, last_name: str) -> None:
+        """Change the owner's first and last name."""
+        # Both names are replaced together, mirroring how they are entered.
+        self.first_name = first_name
+        self.last_name = last_name
+
     def get_all_tasks(self) -> list[Task]:
         """Return every task from every pet as one flat list."""
         # Flatten "every task of every pet" into one list. The scheduler
