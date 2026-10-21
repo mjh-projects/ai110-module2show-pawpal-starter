@@ -52,11 +52,6 @@ Plan for 2026-10-21 (60 of 90 min used):
   08:15-08:25 Breakfast for Whiskers [high, 10 min] (at its preferred time)
   18:00-18:05 Evening medication for Rex [medium, 5 min] (at its preferred time)
 
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
 ```
 
 ## 🧪 Testing PawPal+
