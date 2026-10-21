@@ -43,10 +43,15 @@ pip install -r requirements.txt
 7. Refine UML so it matches what you actually built.
 
 ## 🖥️ Sample Output
-
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
-
 ```
+Today's Schedule for Jordan Smith
+========================================
+Plan for 2026-10-21 (60 of 90 min used):
+  07:00-07:15 Play time for Whiskers [low, 15 min]
+  07:30-08:00 Morning walk for Rex [high, 30 min] (at its preferred time)
+  08:15-08:25 Breakfast for Whiskers [high, 10 min] (at its preferred time)
+  18:00-18:05 Evening medication for Rex [medium, 5 min] (at its preferred time)
+
 # e.g.:
 # Daily plan for Biscuit (Golden Retriever):
 #   08:00 — Morning walk (30 min) [priority: high]
