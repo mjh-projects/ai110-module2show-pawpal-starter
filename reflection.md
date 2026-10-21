@@ -7,12 +7,36 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+1. add a pet and owner profile - allows a user to enter name of their pet and edetails 
+2. add or edit a care task create a task with a duration and priority and allows it to be changed or removed
+3. generate a schedule - generates a schedule with task in order 
+
 **b. Design changes**
 
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
+Yes, I made various changes from the recommendations given in the ai. First it pointing out missing or weak relantionships. 
 
----
+Task.pet_name is a string, not a link to the Pet. Two pets with the same name, or a renamed pet, would break it. A reference to the Pet object, or an id, is safer.
+
+Tasks are found by title. edit_task and remove_task look tasks up by title, but nothing keeps titles unique. Two "Walk" tasks would make the lookup ambiguous. Give each task an id.
+
+completed lives on Task. A daily task is done today but not tomorrow, so the flag needs to reset or live on ScheduledTask. There's also nothing tracking when a task was last done, so frequency ("daily" or "weekly") has nothing to act on. A weekly task also has no day field, so the scheduler can't tell which days it belongs on.
+
+completed lives on Task. A daily task is done today but not tomorrow, so the flag needs to reset or live on ScheduledTask. There's also nothing tracking when a task was last done, so frequency ("daily" or "weekly") has nothing to act on. A weekly task also has no day field, so the scheduler can't tell which days it belongs on.
+
+date, start_time and end_time are strings. Adding durations and comparing times is much easier with datetime.date and datetime.time, or with minutes since midnight.
+
+THese were the changes made: 
+*Priority is now an Enum.
+*Tasks and pets have ids, and edits and removals use task_id.
+&Task.pet_name became pet_id.
+completed became last_completed, with new days_of_week and is_due().
+*preferred_time is new, so conflict checking means something.
+*Dates and times use real date and time types.
+*Schedule links back to its owner, and get_schedule() can return None.
+*Added diagrams/uml_v2.mmd to show the revised design. The original uml.mmd is left untouched.
+
 
 ## 2. Scheduling Logic and Tradeoffs
 
