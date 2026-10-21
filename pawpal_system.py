@@ -236,23 +236,39 @@ class Owner:
     schedules: list[Schedule] = field(default_factory=list)
 
     def full_name(self) -> str:
-        pass
+        # Join first and last name with a space. strip() removes the stray
+        # space that would be left over if one of the names is empty.
+        return f"{self.first_name} {self.last_name}".strip()
 
     def add_pet(self, pet: Pet) -> None:
-        pass
+        # Store the pet in the owner's list; an owner can have any number.
+        self.pets.append(pet)
 
     def get_all_tasks(self) -> list[Task]:
-        pass
+        # Flatten "every task of every pet" into one list. The scheduler
+        # uses this so all pets' tasks are planned as a single timeline.
+        return [task for pet in self.pets for task in pet.tasks]
 
     def set_schedule(self, schedule: Schedule) -> None:
         # CHANGE (behavior note): replaces any existing schedule for
         # schedule.date (one per day) and sets schedule.owner = self.
-        pass
+        # Link the schedule back to this owner.
+        schedule.owner = self
+        # Keep only schedules for OTHER dates, dropping any old one for this
+        # date, so there is never more than one schedule per day.
+        self.schedules = [s for s in self.schedules if s.date != schedule.date]
+        # Then add the new schedule.
+        self.schedules.append(schedule)
 
     # CHANGE: date: str -> date, and the return type is now `Schedule | None`
     # because there may be no schedule for that day yet.
     def get_schedule(self, on: date) -> Schedule | None:
-        pass
+        # Look for the schedule whose date matches and return it.
+        for schedule in self.schedules:
+            if schedule.date == on:
+                return schedule
+        # No schedule exists for that day yet.
+        return None
 
 
 class Scheduler:
