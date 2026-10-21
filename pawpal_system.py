@@ -17,6 +17,8 @@ from enum import Enum
 # CHANGE: priority was a free-form str. An Enum prevents typos like "hgih" and
 # gives priority_value() one obvious ordering to rely on.
 class Priority(Enum):
+    """How important a task is; the value is used to sort tasks."""
+
     HIGH = 3
     MEDIUM = 2
     LOW = 1
@@ -27,6 +29,8 @@ class Priority(Enum):
 # "skipped by the owner today", which the scheduler's `skipped` list (tasks that
 # never fit) cannot express.
 class Status(Enum):
+    """The state of one scheduled activity on a given day."""
+
     PENDING = "pending"  # on today's plan, not done yet (the starting state)
     DONE = "done"  # the owner finished it
     SKIPPED = "skipped"  # the owner chose not to do it today
@@ -35,6 +39,7 @@ class Status(Enum):
 # CHANGE: helper so every Task/Pet gets a unique id. Titles and names are not
 # guaranteed unique, so lookups and links by title/name were ambiguous.
 def _new_id() -> str:
+    """Return a new unique id string for a task or pet."""
     return uuid.uuid4().hex
 
 
@@ -45,17 +50,21 @@ _MINUTES_PER_DAY = 24 * 60  # 1440; a task may not run past the end of the day
 
 
 def _to_minutes(t: time) -> int:
+    """Convert a time of day to minutes since midnight."""
     # 08:30 -> 510
     return t.hour * 60 + t.minute
 
 
 def _to_time(minutes: int) -> time:
+    """Convert minutes since midnight to a time of day."""
     # 510 -> 08:30. Callers keep `minutes` below _MINUTES_PER_DAY.
     return time(minutes // 60, minutes % 60)
 
 
 @dataclass
 class Task:
+    """A care activity for a pet, with its duration, priority and recurrence."""
+
     title: str
     duration_minutes: int
     priority: Priority  # CHANGE: str -> Priority enum (see above)
@@ -81,12 +90,14 @@ class Task:
     last_completed: date | None = None
 
     def mark_complete(self, on: date) -> None:
+        """Record `on` as the day this task was last completed."""
         # CHANGE: takes the date so last_completed can be recorded.
         # Remember the day this task was finished; is_due() reads this to
         # decide when a recurring task should show up again.
         self.last_completed = on
 
     def is_due(self, on: date) -> bool:
+        """Return True if this task belongs on the plan for date `on`."""
         # CHANGE: new method. Combines frequency, days_of_week and
         # last_completed so the scheduler can ask "should this task be on the
         # plan for this date?" in one place.
@@ -115,6 +126,7 @@ class Task:
         return days_since > 0
 
     def priority_value(self) -> int:
+        """Return the priority as an integer (HIGH=3, MEDIUM=2, LOW=1)."""
         # The number behind the Priority enum (HIGH=3, MEDIUM=2, LOW=1), so
         # the scheduler can sort tasks by a plain integer.
         return self.priority.value
@@ -122,6 +134,8 @@ class Task:
 
 @dataclass
 class Pet:
+    """A pet and the list of care tasks it needs."""
+
     name: str
     species: str
     age: int = 0
@@ -130,6 +144,7 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
+        """Add a task to this pet and link it to the pet by id."""
         # CHANGE (behavior note): must set task.pet_id = self.pet_id.
         # Stamp the task with this pet's id so the link from task to pet is
         # always set, no matter who created the Task.
@@ -139,6 +154,7 @@ class Pet:
 
     # CHANGE: edit/remove take task_id instead of title (titles may repeat).
     def edit_task(self, task_id: str, task: Task) -> None:
+        """Replace the task with the given id, or raise ValueError if missing."""
         # Walk the list with its positions so we can replace in place.
         for i, existing in enumerate(self.tasks):
             if existing.task_id == task_id:
@@ -154,6 +170,7 @@ class Pet:
         raise ValueError(f"No task with id {task_id!r} for pet {self.name!r}")
 
     def remove_task(self, task_id: str) -> None:
+        """Delete the task with the given id, or raise ValueError if missing."""
         # Find the task by id (not title, which may repeat) and delete it.
         # Past Schedules that already contain it keep their own reference,
         # so history is not rewritten.
@@ -167,6 +184,8 @@ class Pet:
 
 @dataclass
 class ScheduledTask:
+    """One task placed at a specific time on a day's schedule, with its status."""
+
     task: Task
     # CHANGE: str -> datetime.time. Adding durations and comparing times is
     # error-prone on strings like "8:30" vs "08:30".
@@ -182,28 +201,33 @@ class ScheduledTask:
     # save callers from writing `item.task.title` everywhere.
     @property
     def title(self) -> str:
+        """Return the wrapped task's title."""
         # The activity's name, e.g. "Morning walk".
         return self.task.title
 
     @property
     def duration_minutes(self) -> int:
+        """Return the wrapped task's duration in minutes."""
         # How long the activity takes, taken from the task (not from the
         # start/end times, so the two can't drift apart).
         return self.task.duration_minutes
 
     @property
     def frequency(self) -> str:
+        """Return the wrapped task's frequency ("daily" or "weekly")."""
         # "daily" or "weekly". Frequency belongs to the task, not to one
         # day's placement, so we only forward it here.
         return self.task.frequency
 
     @property
     def is_done(self) -> bool:
+        """Return True if this scheduled task's status is DONE."""
         # Bool-style check so code that only cares "finished or not" stays
         # simple; replaces reading the old `completed` flag.
         return self.status is Status.DONE
 
     def mark_done(self, on: date) -> None:
+        """Mark this scheduled task DONE and record `on` on its Task."""
         # CHANGE: one call finishes the activity everywhere it needs to.
         # 1) Record that this scheduled instance is done.
         self.status = Status.DONE
@@ -214,6 +238,7 @@ class ScheduledTask:
         self.task.mark_complete(on)
 
     def mark_skipped(self) -> None:
+        """Mark this scheduled task SKIPPED without touching its Task."""
         # The owner chose not to do this today. Only the status changes:
         # the Task's last_completed is left alone, so it stays due later.
         self.status = Status.SKIPPED
@@ -221,6 +246,8 @@ class ScheduledTask:
 
 @dataclass
 class Schedule:
+    """One day's plan: the tasks scheduled at set times and the ones skipped."""
+
     date: date  # CHANGE: str -> datetime.date
     start_time: time  # CHANGE: str -> datetime.time
     available_minutes: int
@@ -232,11 +259,13 @@ class Schedule:
     skipped: list[Task] = field(default_factory=list)
 
     def total_minutes(self) -> int:
+        """Return the total duration of all scheduled tasks in minutes."""
         # Add up the duration of every scheduled task: the time this plan
         # actually uses, to compare against available_minutes.
         return sum(item.task.duration_minutes for item in self.scheduled)
 
     def has_conflict(self) -> bool:
+        """Return True if any two scheduled tasks overlap in time."""
         # CHANGE (behavior note): now meaningful because Task.preferred_time
         # can pin tasks to overlapping slots. Sort by start time, then compare
         # neighbours (O(n log n)) rather than every pair (O(n^2)).
@@ -254,6 +283,7 @@ class Schedule:
         return False
 
     def explain(self) -> str:
+        """Return a readable text summary of the plan and any skipped tasks."""
         # Map pet_id -> pet name so each line can say which pet a task is
         # for. Empty if the schedule isn't linked to an owner.
         pet_names = {}
@@ -300,26 +330,32 @@ class Schedule:
 
 @dataclass
 class Owner:
+    """A pet owner who has pets and at most one schedule per day."""
+
     first_name: str
     last_name: str
     pets: list[Pet] = field(default_factory=list)
     schedules: list[Schedule] = field(default_factory=list)
 
     def full_name(self) -> str:
+        """Return the owner's first and last name as one string."""
         # Join first and last name with a space. strip() removes the stray
         # space that would be left over if one of the names is empty.
         return f"{self.first_name} {self.last_name}".strip()
 
     def add_pet(self, pet: Pet) -> None:
+        """Add a pet to this owner."""
         # Store the pet in the owner's list; an owner can have any number.
         self.pets.append(pet)
 
     def get_all_tasks(self) -> list[Task]:
+        """Return every task from every pet as one flat list."""
         # Flatten "every task of every pet" into one list. The scheduler
         # uses this so all pets' tasks are planned as a single timeline.
         return [task for pet in self.pets for task in pet.tasks]
 
     def set_schedule(self, schedule: Schedule) -> None:
+        """Store a schedule, replacing any existing one for the same date."""
         # CHANGE (behavior note): replaces any existing schedule for
         # schedule.date (one per day) and sets schedule.owner = self.
         # Link the schedule back to this owner.
@@ -333,6 +369,7 @@ class Owner:
     # CHANGE: date: str -> date, and the return type is now `Schedule | None`
     # because there may be no schedule for that day yet.
     def get_schedule(self, on: date) -> Schedule | None:
+        """Return the schedule for date `on`, or None if there isn't one."""
         # Look for the schedule whose date matches and return it.
         for schedule in self.schedules:
             if schedule.date == on:
@@ -342,10 +379,13 @@ class Owner:
 
 
 class Scheduler:
+    """Builds a daily Schedule from an owner's tasks and available time."""
+
     # CHANGE: date/start_time use real date/time types (see Schedule).
     def generate_plan(
         self, owner: Owner, on: date, start_time: time, available_minutes: int
     ) -> Schedule:
+        """Build a one-day Schedule for the owner's due tasks within the time budget."""
         # CHANGE (behavior note): only include tasks where task.is_due(on).
 
         # Step 1: start with an empty schedule for this day, linked to the
@@ -368,11 +408,13 @@ class Scheduler:
         used = 0
 
         def overlaps(start: int, end: int) -> bool:
+            """Return True if the block [start, end) overlaps any placed task."""
             # Two blocks overlap when each one starts before the other ends.
             # Touching blocks (one ends exactly when the next starts) don't.
             return any(start < t_end and t_start < end for t_start, t_end in taken)
 
         def place(task: Task, start: int) -> None:
+            """Put the task on the schedule starting at `start` minutes."""
             # Record the task at `start`: reserve its block, add its minutes
             # to the budget used, and add it to the schedule as a
             # ScheduledTask with real time-of-day values.
@@ -440,6 +482,7 @@ class Scheduler:
         return schedule
 
     def sort_by_priority(self, tasks: list[Task]) -> list[Task]:
+        """Return the tasks sorted by priority, highest first (shorter wins ties)."""
         # CHANGE (behavior note): ties in priority break by shorter duration
         # first, so more tasks fit in the available time.
         # Highest priority first (negative value sorts descending); on a tie

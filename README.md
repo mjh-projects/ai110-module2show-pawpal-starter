@@ -70,16 +70,27 @@ Sample test output:
 # Paste your pytest output here
 ```
 
+## Implementation Summary
+PawPal+ is a Python logic layer that builds a daily care schedule for a pet owner. It lives in `pawpal_system.py`, with a terminal demo in `main.py` and tests in `tests/test_pawpal.py`.
+
+An `Owner` has one or more `Pet`s, and each `Pet` has a list of `Task`s. A task records its duration, priority, optional preferred time of day, and how often it repeats. `Task.is_due()` uses the repeat setting and the date the task was last completed to decide whether it belongs on a given day's plan.
+
+The `Scheduler` builds the plan. It asks the owner for every pet's tasks, keeps the ones due that day, and sorts them by priority, with shorter tasks first on ties. Tasks pinned to a preferred time go on the timeline first. The rest take the earliest free gap, as long as the total stays within the owner's available minutes. Because all pets share one timeline, tasks never overlap. Tasks that don't fit go on a skipped list.
+
+The result is a `Schedule` made of `ScheduledTask`s, each with a start time, an end time and a status (pending, done or skipped). The owner keeps one schedule per day. `Schedule.explain()` prints the plan with pet names and the skipped tasks, and `has_conflict()` checks it for overlaps. When a scheduled task is marked done, it also records the completion date on its `Task`, so recurring tasks come due again at the right time.
+
 ## 📐 Smarter Scheduling
 
 > Fill in once you've implemented scheduling logic.
 
+
 | Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+|---|---|---|
+| Task sorting | `Scheduler.sort_by_priority()`, `Task.priority_value()` | Sorts by priority, highest first; ties go to the shorter task |
+| Filtering | `Task.is_due()`, `Scheduler.generate_plan()` | Skips tasks not due that day or that don't fit the time budget |
+| Conflict handling | `Schedule.has_conflict()`, `Scheduler.generate_plan()` | Never places overlapping tasks; checks a finished schedule for overlaps |
+| Recurring tasks | `Task.is_due()`, `Task.mark_complete()`, `ScheduledTask.mark_done()` | Records the last completed date and uses frequency to decide when a task is due again |
+
 
 ## 📸 Demo Walkthrough
 
