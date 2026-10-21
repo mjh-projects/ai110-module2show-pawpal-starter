@@ -115,14 +115,38 @@ class Pet:
 
     def add_task(self, task: Task) -> None:
         # CHANGE (behavior note): must set task.pet_id = self.pet_id.
-        pass
+        # Stamp the task with this pet's id so the link from task to pet is
+        # always set, no matter who created the Task.
+        task.pet_id = self.pet_id
+        # Then store it in this pet's task list.
+        self.tasks.append(task)
 
     # CHANGE: edit/remove take task_id instead of title (titles may repeat).
     def edit_task(self, task_id: str, task: Task) -> None:
-        pass
+        # Walk the list with its positions so we can replace in place.
+        for i, existing in enumerate(self.tasks):
+            if existing.task_id == task_id:
+                # Keep the original id, so anything that refers to this task
+                # (e.g. a ScheduledTask) still points at the right one.
+                task.task_id = existing.task_id
+                # Make sure the replacement is linked to this pet too.
+                task.pet_id = self.pet_id
+                # Swap the old task for the new one at the same position.
+                self.tasks[i] = task
+                return
+        # Nothing matched: fail loudly so a wrong id is noticed, not ignored.
+        raise ValueError(f"No task with id {task_id!r} for pet {self.name!r}")
 
     def remove_task(self, task_id: str) -> None:
-        pass
+        # Find the task by id (not title, which may repeat) and delete it.
+        # Past Schedules that already contain it keep their own reference,
+        # so history is not rewritten.
+        for i, existing in enumerate(self.tasks):
+            if existing.task_id == task_id:
+                del self.tasks[i]
+                return
+        # Nothing matched: raise the same error as edit_task.
+        raise ValueError(f"No task with id {task_id!r} for pet {self.name!r}")
 
 
 @dataclass
