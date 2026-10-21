@@ -1,0 +1,81 @@
+classDiagram
+    class Priority {
+        <<enumeration>>
+        HIGH
+        MEDIUM
+        LOW
+    }
+
+    class Owner {
+        +str first_name
+        +str last_name
+        +list~Pet~ pets
+        +list~Schedule~ schedules
+        +full_name() str
+        +add_pet(pet: Pet) None
+        +get_all_tasks() list~Task~
+        +set_schedule(schedule: Schedule) None
+        +get_schedule(on: date) Optional~Schedule~
+    }
+
+    class Pet {
+        +str pet_id
+        +str name
+        +str species
+        +int age
+        +list~Task~ tasks
+        +add_task(task: Task) None
+        +edit_task(task_id: str, task: Task) None
+        +remove_task(task_id: str) None
+    }
+
+    class Task {
+        +str task_id
+        +str pet_id
+        +str title
+        +int duration_minutes
+        +Priority priority
+        +str category
+        +str frequency
+        +list~int~ days_of_week
+        +Optional~time~ preferred_time
+        +Optional~date~ last_completed
+        +mark_complete(on: date) None
+        +is_due(on: date) bool
+        +priority_value() int
+    }
+
+    class ScheduledTask {
+        +Task task
+        +time start_time
+        +time end_time
+        +bool completed
+    }
+
+    class Schedule {
+        +date date
+        +time start_time
+        +int available_minutes
+        +Owner owner
+        +list~ScheduledTask~ scheduled
+        +list~Task~ skipped
+        +total_minutes() int
+        +has_conflict() bool
+        +explain() str
+    }
+
+    class Scheduler {
+        +generate_plan(owner: Owner, on: date, start_time: time, available_minutes: int) Schedule
+        +sort_by_priority(tasks: list~Task~) list~Task~
+    }
+
+    Owner "1" --> "*" Pet : has
+    Owner "1" --> "*" Schedule : has one per day
+    Pet "1" --> "*" Task : needs
+    Task --> Priority : has
+    Task ..> Pet : pet_id refers to
+    Schedule "1" --> "*" ScheduledTask : contains
+    Schedule --> Owner : belongs to
+    ScheduledTask "1" --> "1" Task : wraps
+    Scheduler ..> Owner : reads tasks from
+    Scheduler ..> Schedule : creates
