@@ -57,19 +57,31 @@ Plan for 2026-10-21 (60 of 90 min used):
 ## 🧪 Testing PawPal+
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
+
+Tests live in `tests/test_pawpal.py` and cover the core scheduling behaviors:
+
+- Marking a scheduled task done (updates its status and the underlying task's completion date)
+- Adding a task to a pet
+- Sorting tasks by priority, with shorter tasks winning ties
+- Recurrence logic (`Task.is_due()`) for daily vs. weekly tasks
+- Conflict detection between overlapping scheduled tasks
 
 Sample test output:
 
 ```
-# Paste your pytest output here
-```
+==================================================================== test session starts =====================================================================
+platform win32 -- Python 3.14.5, pytest-9.1.1, pluggy-1.7.0
+rootdir: C:\Users\medit\codepath\ai110-module2show-pawpal-starter
+plugins: anyio-4.15.1
+collected 5 items                                                                                                                                             
 
+tests\test_pawpal.py .....                                                                                                                              [100%]
+
+===================================================================== 5 passed in 0.16s ======================================================================
+```
+5 star confidence.
 ## Implementation Summary
 PawPal+ is a Python logic layer that builds a daily care schedule for a pet owner. It lives in `pawpal_system.py`, with a terminal demo in `main.py` and tests in `tests/test_pawpal.py`.
 
