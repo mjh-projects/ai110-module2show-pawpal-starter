@@ -4,7 +4,7 @@ import streamlit as st
 
 # Bring in the backend classes from the logic layer so the UI can build an
 # owner, pets and tasks, and ask the Scheduler to generate the daily plan.
-from pawpal_system import Owner, Pet, Priority, Scheduler, Task
+from pawpal_system import Owner, Pet, Priority, Scheduler, Status, Task
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -304,10 +304,55 @@ if schedule is not None:
         f"Plan for {schedule.date.isoformat()}: "
         f"{schedule.total_minutes()} of {schedule.available_minutes} minutes used."
     )
+
+    # Schedule.filter_by_status() breaks today's plan down by status so the
+    # counts can be shown at a glance instead of making the user scan rows.
+    col_pending, col_done, col_skipped = st.columns(3)
+    col_pending.info(f"🕓 {len(schedule.filter_by_status(Status.PENDING))} pending")
+    col_done.success(f"✅ {len(schedule.filter_by_status(Status.DONE))} done")
+    col_skipped.warning(f"⏭️ {len(schedule.filter_by_status(Status.SKIPPED))} skipped today")
+
+    # Schedule.has_conflict() / find_conflicts() flag any scheduled items
+    # that still overlap in time, so the UI can call it out instead of
+    # silently showing a broken-looking plan.
+    if schedule.has_conflict():
+        conflicts = schedule.find_conflicts()
+        st.warning(f"⚠️ {len(conflicts)} scheduling conflict(s) detected:")
+        st.table(
+            [
+                {
+                    "Task A": earlier.title,
+                    "Time A": f"{earlier.start_time:%H:%M}-{earlier.end_time:%H:%M}",
+                    "Task B": later.title,
+                    "Time B": f"{later.start_time:%H:%M}-{later.end_time:%H:%M}",
+                }
+                for earlier, later in conflicts
+            ]
+        )
+
     if schedule.scheduled:
+        # Schedule.sort_by_time() drives a clean, read-only overview table of
+        # the full day's plan, independent of the interactive rows below.
+        st.markdown("#### Today's Plan")
+        st.table(
+            [
+                {
+                    "Time": f"{item.start_time:%H:%M}-{item.end_time:%H:%M}",
+                    "Task": item.title,
+                    "Pet": pet_names.get(item.task.pet_id, ""),
+                    "Priority": item.task.priority.name.title(),
+                    "Duration (min)": item.duration_minutes,
+                    "Status": item.status.value.title(),
+                }
+                for item in schedule.sort_by_time()
+            ]
+        )
+
         # One row per scheduled item, with Done and Skip buttons that update
-        # that item's status.
-        for item in schedule.scheduled:
+        # that item's status. Schedule.sort_by_time() is used instead of the
+        # raw list so the row order matches the table above.
+        st.caption("Update a task's status:")
+        for item in schedule.sort_by_time():
             # Wide enough for the "Done" and "Skip" labels to show in full.
             col_time, col_task, col_status, col_done, col_skip = st.columns(
                 [2, 4, 1.5, 1.2, 1.2]
@@ -329,11 +374,20 @@ if schedule is not None:
                 st.rerun()
     else:
         st.info("Nothing could be scheduled.")
+
     if schedule.skipped:
-        st.warning(
-            "Skipped (did not fit): "
-            + ", ".join(task.title for task in schedule.skipped)
+        st.warning(f"{len(schedule.skipped)} task(s) did not fit today's plan:")
+        st.table(
+            [
+                {
+                    "Task": task.title,
+                    "Priority": task.priority.name.title(),
+                    "Duration (min)": task.duration_minutes,
+                }
+                for task in schedule.skipped
+            ]
         )
+
     # Schedule.explain() gives the full text version with the reasons.
     with st.expander("Why this plan?"):
         st.text(schedule.explain())

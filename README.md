@@ -106,12 +106,45 @@ The result is a `Schedule` made of `ScheduledTask`s, each with a start time, an 
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+### Main UI features
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+The Streamlit app (`app.py`) lets a user:
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+- Edit the owner's first and last name, or start over with a fresh owner
+- Add, edit, and remove pets (name, species, age)
+- Add, edit, and remove care tasks for a pet (duration, priority, repeat frequency, and an optional pinned time of day)
+- Set the day's start time and available minutes, then generate a schedule
+- Mark a scheduled task Done or Skip, which updates its status live
+- See at-a-glance pending/done/skipped counts and any scheduling conflicts
+- Expand "Why this plan?" to read the full text explanation of the plan
+
+### Example workflow
+
+1. Add a pet, e.g. "Rex" (dog).
+2. Add a task for Rex, e.g. "Morning walk", 30 minutes, high priority.
+3. Set the day's start time (e.g. 7:00) and available minutes (e.g. 90), then click **Generate schedule**.
+4. View today's schedule: the status summary, the "Today's Plan" table (sorted by time), and any skipped tasks or conflict warnings.
+5. Click **Done** on a finished task — its status updates, and a recurring task won't be due again until its frequency says so.
+
+### Key Scheduler behaviors shown
+
+- **Sorting by priority**: `Scheduler.sort_by_priority()` orders due tasks highest priority first, with shorter tasks winning ties, before they're placed on the schedule.
+- **Sorting by time**: `Schedule.sort_by_time()` drives the "Today's Plan" table and the explanation, so the plan always reads in chronological order regardless of placement order.
+- **Conflict warnings**: `Schedule.has_conflict()` / `find_conflicts()` are checked on every render; if any scheduled items overlap, the UI shows a warning with a table of the conflicting pairs.
+- **Skipped tasks**: tasks that don't fit the time budget, run past midnight, or lose a pinned-time collision are listed separately instead of being silently dropped.
+- **Recurrence**: `Task.is_due()` keeps a completed task off the plan until its frequency (daily/weekly) says it's due again.
+
+### Sample CLI output
+
+Running `python main.py` builds a sample owner, pets and tasks, generates a schedule, and prints it:
+
+```
+Today's Schedule for Jordan Smith
+========================================
+Plan for 2026-10-30 (30 of 90 min used):
+  07:00-07:15 Play time for Whiskers [low, 15 min]
+  07:30-07:40 Breakfast for Whiskers [high, 10 min] (at its preferred time)
+  18:00-18:05 Evening medication for Rex [medium, 5 min] (at its preferred time)
+Skipped:
+  Morning walk [high, 30 min] - did not fit (60 min left, or its time slot was taken)
+```
