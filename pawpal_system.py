@@ -264,23 +264,63 @@ class Schedule:
         # actually uses, to compare against available_minutes.
         return sum(item.task.duration_minutes for item in self.scheduled)
 
-    def has_conflict(self) -> bool:
-        """Return True if any two scheduled tasks overlap in time."""
+    # ADDED: sort_by_time() pulls out the sort-by-start-time logic that used
+    # to be duplicated as an inline lambda in both has_conflict() and
+    # explain(). Named method instead of a repeated lambda, same pattern as
+    # Scheduler.sort_by_priority().
+    def sort_by_time(self) -> list[ScheduledTask]:
+        """Return the scheduled tasks ordered by start time."""
+        return sorted(self.scheduled, key=lambda item: item.start_time)
+
+    # ADDED: filter_by_status() lets a caller ask "what's still pending /
+    # done / skipped today?" without re-writing the list comprehension
+    # everywhere it's needed (e.g. a UI showing only unfinished tasks).
+    def filter_by_status(self, status: Status) -> list[ScheduledTask]:
+        """Return the scheduled tasks whose status matches `status`."""
+        return [item for item in self.scheduled if item.status == status]
+
+    # ADDED: filter_by_pet() mirrors the pet_id -> name lookup already done
+    # in explain(), so a caller can ask "what's on the plan for Rex today?"
+    # by name, even though ScheduledTask only stores the pet's id.
+    def filter_by_pet(self, pet_name: str) -> list[ScheduledTask]:
+        """Return the scheduled tasks belonging to the pet named `pet_name`."""
+        # No owner link means there's no pet list to match names against.
+        if self.owner is None:
+            return []
+        # A pet's name isn't guaranteed unique, so match every pet_id that
+        # has this name rather than assuming there's only one.
+        pet_ids = {pet.pet_id for pet in self.owner.pets if pet.name == pet_name}
+        return [item for item in self.scheduled if item.task.pet_id in pet_ids]
+
+    # ADDED: find_conflicts() pulls the overlap-detection loop out of
+    # has_conflict() so callers can see WHICH tasks overlap (e.g. to show
+    # "Morning walk (Rex) overlaps with Breakfast (Whiskers)"), not just
+    # whether any overlap exists. Works across pets since ScheduledTask
+    # carries no pet filter here - any two overlapping times are reported,
+    # whether they belong to the same pet or different ones.
+    def find_conflicts(self) -> list[tuple[ScheduledTask, ScheduledTask]]:
+        """Return pairs of scheduled tasks whose times overlap."""
         # CHANGE (behavior note): now meaningful because Task.preferred_time
         # can pin tasks to overlapping slots. Sort by start time, then compare
         # neighbours (O(n log n)) rather than every pair (O(n^2)).
 
         # Put the items in time order first, so any overlap must be between
         # two items that sit next to each other.
-        ordered = sorted(self.scheduled, key=lambda item: item.start_time)
+        ordered = self.sort_by_time()
         # zip(ordered, ordered[1:]) pairs each item with the one after it.
-        for earlier, later in zip(ordered, ordered[1:]):
-            # Overlap only if the later task starts BEFORE the earlier one
-            # ends. Starting exactly when it ends (8:30 / 8:30) is fine.
-            if later.start_time < earlier.end_time:
-                return True
-        # No neighbouring pair overlapped.
-        return False
+        # Overlap only if the later task starts BEFORE the earlier one ends.
+        # Starting exactly when it ends (8:30 / 8:30) is fine.
+        return [
+            (earlier, later)
+            for earlier, later in zip(ordered, ordered[1:])
+            if later.start_time < earlier.end_time
+        ]
+
+    def has_conflict(self) -> bool:
+        """Return True if any two scheduled tasks overlap in time."""
+        # ADDED: has_conflict() is now a thin wrapper around find_conflicts(),
+        # so the overlap logic lives in one place instead of two.
+        return bool(self.find_conflicts())
 
     def explain(self) -> str:
         """Return a readable text summary of the plan and any skipped tasks."""
@@ -297,7 +337,8 @@ class Schedule:
         ]
 
         # One line per scheduled task, in time order.
-        for item in sorted(self.scheduled, key=lambda i: i.start_time):
+        # ADDED: use sort_by_time() instead of an inline sorted(..., key=lambda) call.
+        for item in self.sort_by_time():
             task = item.task
             # Pet name if we can find it, otherwise leave it out.
             pet = pet_names.get(task.pet_id, "")

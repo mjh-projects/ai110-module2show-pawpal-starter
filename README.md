@@ -81,14 +81,14 @@ The result is a `Schedule` made of `ScheduledTask`s, each with a start time, an 
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
-
 | Feature | Method(s) | Notes |
 |---|---|---|
-| Task sorting | `Scheduler.sort_by_priority()`, `Task.priority_value()` | Sorts by priority, highest first; ties go to the shorter task |
-| Filtering | `Task.is_due()`, `Scheduler.generate_plan()` | Skips tasks not due that day or that don't fit the time budget |
-| Conflict handling | `Schedule.has_conflict()`, `Scheduler.generate_plan()` | Never places overlapping tasks; checks a finished schedule for overlaps |
+| Task sorting (by priority) | `Scheduler.sort_by_priority()`, `Task.priority_value()` | Sorts by priority, highest first; ties go to the shorter task |
+| Task sorting (by time) | `Schedule.sort_by_time()` | Orders a day's scheduled tasks by start time; used by `explain()` and `find_conflicts()` so the sort logic lives in one place |
+| Filtering by due date | `Task.is_due()`, `Scheduler.generate_plan()` | Skips tasks not due that day or that don't fit the time budget |
+| Filtering by status | `Schedule.filter_by_status()` | Returns the scheduled tasks matching a given `Status` (pending, done, skipped) |
+| Filtering by pet | `Schedule.filter_by_pet()` | Returns the scheduled tasks belonging to a pet, looked up by name via the owner's pet list |
+| Conflict handling | `Schedule.find_conflicts()`, `Schedule.has_conflict()`, `Scheduler.generate_plan()` | `generate_plan()` never places overlapping tasks in the first place; `find_conflicts()` sorts by time and compares neighbours to report any overlapping pairs, and `has_conflict()` reports whether any exist |
 | Recurring tasks | `Task.is_due()`, `Task.mark_complete()`, `ScheduledTask.mark_done()` | Records the last completed date and uses frequency to decide when a task is due again |
 
 
